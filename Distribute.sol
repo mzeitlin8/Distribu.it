@@ -1,7 +1,7 @@
 pragma solidity ^0.4.11;
 
-// implement ether library in all ether variables
 // hash weight or nah
+// how does handle unclaimed tokens
 
 contract Distribute {
 
@@ -14,19 +14,24 @@ contract Distribute {
 	// variables set and changeable by merchant
 	address public merchantWallet;
 	address public merchant;
-	uint public storeCredit;      // ether
-	uint public registrationFee;  // ether
+	uint public storeCredit;      // wei
+	uint public registrationFee;  // wei
 	uint public pitySum;
 	uint public allowancePts;
 	uint public allowancePeriod;
+
+	// variables to manage allowance system
+	uint public allowanceNonce;
+	uint public allowanceExp;
 
 	// nonce to differentiate each sale
 	uint public saleNonce;
 
 	struct Customer {
-		uint credit;     // ether
+		uint credit;     // wei
 		uint pts;
 		uint pityPts;
+		uint pityNonce;
 		bool registered;
 	}
 
@@ -38,8 +43,8 @@ contract Distribute {
 
 	struct Sale {
 		uint saleExp;
-		uint claimExp;   // IMPLEMTNT
-		uint price;      // ether
+		uint claimExp;
+		uint price;      // wei
 		uint quantity;
 
 		address tokenAddr;  // IMPLEMENT
@@ -71,6 +76,9 @@ contract Distribute {
 		allowancePeriod = _allowancePeriod;
 		merchant = msg.sender;
 
+		allowanceNonce = 0;
+		allowanceExp = now + _allowancePeriod;
+
 		// start saleID nonce at 0
 		saleNonce = 0;
 	}
@@ -78,15 +86,23 @@ contract Distribute {
 	// is payable automatic?
 	function register() payable {
 		uint payment = storeCredit + registrationFee;
-		// make sure they sent payment in ether and provide change use mike's sale
-		// ether goes into merchant wallet
+        uint excess = payment - msg.value;
+
+        // return any excess msg.value
+        if (excess > 0) {
+            msg.sender.transfer(excess);
+        }
+
+        // forward received ether minus any excess to the wallet
+        merchantWallet.transfer(payment);
 
 		buyers[msg.sender].credit = storeCredit;
 		buyers[msg.sender].registered = true;
 	}
 
-	function startSale(uint _salePeriod, uint _quantity, uint _price) merchantOnly {
+	function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price) merchantOnly {
 		sales[saleNonce].saleExp = now + _salePeriod;
+		sales[saleNonce].claimExp = sales[saleNonce].saleExp + _claimPeriod;
 		sales[saleNonce].quantity = _quantity;
 		sales[saleNonce].price = _price;
 		saleNonce++;
@@ -132,15 +148,28 @@ contract Distribute {
 	}
 
 	function claimProduct(uint _saleID) payable {
+		require(sales[_saleID].claimExp >= now);
 		require(buyerSaleInfo[msg.sender][_saleID].claimed == false);
 		require(buyerSaleInfo[msg.sender][_saleID].won == true);
-		// make sure paid correct amount and give change
+		 
+		uint excess = sales[_saleInfo].price - msg.value;
+
+        // return any excess msg.value
+        if (excess > 0) {
+            msg.sender.transfer(excess);
+        }
+
+        // forward received ether minus any excess to the wallet
+        merchantWallet.transfer(payment);
+
 		// GIVE TOKEN, IMPLEMENT
 
 		buyerSaleInfo[msg.sender][_saleID].claimed == true;
 	}
 
-	function resetPts
+	function resetPts {
+
+	}
 
 
 
