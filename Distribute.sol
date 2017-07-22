@@ -29,9 +29,12 @@ contract Distribute {
 
 	struct Customer {
 		uint credit;     // wei
+
 		uint pts;
+		uint ptsNonce;
+
 		uint pityPts;
-		uint pityNonce;
+
 		bool registered;
 	}
 
@@ -131,7 +134,7 @@ contract Distribute {
 	}
 
 	// intended to be called by merchant, but it is fine if anyone does
-	function decide(uint _saleID) {
+	function decideWinners(uint _saleID) {
 		require(sales[_saleID].saleExp < now);
 		require( hasn't been decided yet )
 		// call an oracle
@@ -167,8 +170,15 @@ contract Distribute {
 		buyerSaleInfo[msg.sender][_saleID].claimed == true;
 	}
 
-	function resetPts {
+	function claimAllowancePts() {
+		if (allowanceExp < now) {
+			allowanceExp += allowancePeriod;
+			allowanceNonce++;
+		}
 
+		require(allowanceNonce > buyers[msg.sender].pityNonce);
+		buyers[msg.sender].ptsNonce = allowanceNonce;
+		buyers[msg.sender].pts = allowancePts;
 	}
 
 
@@ -186,19 +196,25 @@ contract Distribute {
 		merchantWallet = _addr;
 	}
 
-	function setStoreCredit(uint _storeCredit) public merchantOnly {
-		storeCredit = _storeCredit;
+	function setStoreCredit(uint _credit) public merchantOnly {
+		storeCredit = _credit;
 	}
 
 	function setRegistrationFee(uint _fee) public merchantOnly{
 		registrationFee = _fee;
 	}
 	
-	function setPitySum(uint _pitySum) public merchantOnly{
-		pitySum = _pitySum;
+	function setPitySum(uint _sum) public merchantOnly{
+		pitySum = _sum;
 	}
 
-
+	function setAllowancePts(uint _pts) public merchantOnly{
+		registrationFee = _pts;
+	}
+	
+	function setAllowancePeriod(uint _period) public merchantOnly{
+		pitySum = _period;
+	}
 
 
 }
