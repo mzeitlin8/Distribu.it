@@ -4,11 +4,10 @@ pragma solidity ^0.4.11;
 
 contract Distribute {
 
-    mapping(address => Customer) public buyers;
-    mapping(uint => Sale) public sales;
-    // holds buyer information for a single sale  
-    // usage: [buyer's address][saleID] => CustomerStatus struct
-    mapping(address => mapping(uint => CustomerStatus)) public buyerSaleInfo;
+    mapping(address => Buyer) public buyers;
+    mapping(uint => Sale) public sales; //saleNonce => sale struct
+    // [buyer's address][saleID] => CustomerStatus struct
+    mapping(address => mapping(uint => BuyerStatus)) public buyerSaleInfo;
 
     // variables set and changeable by merchant
     address public merchantWallet;
@@ -26,7 +25,7 @@ contract Distribute {
     // nonce to differentiate each sale
     uint public saleNonce;
 
-    struct Customer {
+    struct Buyer {
         uint credit;     // wei
 
         uint pts;
@@ -37,29 +36,28 @@ contract Distribute {
         bool registered;
     }
 
-    struct CustomerStatus {
+    struct BuyerStatus {
         uint weightPts;  // how much buyer bet to raise chances of winning (default 0)
         bool won;        // whether was able to buy product or not
         bool claimed;    // if won: product claimed    if lost: pity points claimed
     }
 
     struct Sale {
-        uint saleExp;
-        uint claimExp;
-        uint price;      // wei
-        uint quantity;
+        uint saleExp;   // for buyers to make enter a sale
+        uint claimExp;  // for a winner to claim a product token
+        uint price;     // wei
+        uint quantity;  // num goods
 
         address tokenAddr;  // IMPLEMENT
     }
 
     /*
-     * Modifier
+     * Modifiers
      */
     modifier merchantOnly {
         require(msg.sender == merchant);
         _;
     }
-
 
     /*
      * Constructor
@@ -115,7 +113,7 @@ contract Distribute {
     }
 
     function enterSale(uint _weightPts, uint _saleID) {
-        //
+        require(!saleEnded(_saleID));
         require(buyers[msg.sender].registered == true);
         require(buyers[msg.sender].pts + buyers[msg.sender].pityPts >= _weightPts);
 
@@ -136,7 +134,7 @@ contract Distribute {
 
     // intended to be called by merchant, but it is fine if anyone does
     function decideWinners(uint _saleID) {
-        require(sales[_saleID].saleExp < now);
+        require(saleEnded(_saleID));
         // require( hasn't been decided yet )
         // call an oracle
         // event
@@ -183,6 +181,12 @@ contract Distribute {
     }
 
 
+    /*
+     * Helper Functions
+     */
+     function saleEnded(uint saleID) private returns(bool) {
+        return sales[_saleID].saleExp < now;
+     }
 
     /*
      * Merchant Functions
