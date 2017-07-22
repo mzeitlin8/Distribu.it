@@ -58,6 +58,10 @@ contract Distribute {
         require(msg.sender == merchant);
         _;
     }
+    modifier isRegistered {
+        require(buyers[msg.sender].registered);
+        _;
+    }
 
     /*
      * Constructor
@@ -102,6 +106,7 @@ contract Distribute {
         buyers[msg.sender].registered = true;
     }
 
+    //initialize values in Sale struct and increment sale nonce
     function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price) merchantOnly {
         sales[saleNonce].saleExp = now + _salePeriod;
         sales[saleNonce].claimExp = sales[saleNonce].saleExp + _claimPeriod;
@@ -112,23 +117,23 @@ contract Distribute {
         // event
     }
 
-    function enterSale(uint _weightPts, uint _saleID) {
+    // called by registered buyer
+    // subtract points from the buyer and record points in the sale
+    function enterSale(uint _weightPts, uint _saleID) public isRegistered{
         require(!saleEnded(_saleID));
-        require(buyers[msg.sender].registered == true);
         require(buyers[msg.sender].pts + buyers[msg.sender].pityPts >= _weightPts);
 
         if (_weightPts > 0) {
-            if (buyers[msg.sender].pts >= _weightPts) {
+            if (buyers[msg.sender].pts >= _weightPts) { // only take from regular pts
                 buyers[msg.sender].pts = buyers[msg.sender].pts - _weightPts;
             }
-            else
-            {
+            else { //take all of regular pts and part of pityPts
                 uint difference = _weightPts - buyers[msg.sender].pts;
                 buyers[msg.sender].pts = 0;
                 buyers[msg.sender].pityPts = buyers[msg.sender].pityPts - difference;
             }
         }
-
+        // record how many points the buyer wants to put into the sale
         buyerSaleInfo[msg.sender][_saleID].weightPts = _weightPts;
     }
 
@@ -141,18 +146,22 @@ contract Distribute {
         // set whether buyers won or lost in struct
     }
 
-    function claimPityPts(uint _saleID) {
-        require(buyerSaleInfo[msg.sender][_saleID].claimed == false);
-        require(buyerSaleInfo[msg.sender][_saleID].won == false);
+    // called by losers of the sale
+    // increase number of pity points
+    function claimPityPts(uint _saleID) publilc isRegistered {
+        require(buyerSaleInfo[msg.sender][_saleID].claimed == false); //cannot claim twice
+        require(buyerSaleInfo[msg.sender][_saleID].won == false); //is loser
 
         buyers[msg.sender].pityPts += pitySum;
         buyerSaleInfo[msg.sender][_saleID].claimed = true;
     }
 
-    function claimProduct(uint _saleID) payable {
+    // called by winners of the sale, send ETH with txn to pay for product
+    // get token from merchant
+    function claimProduct(uint _saleID) public isRegistered payable {
         require(sales[_saleID].claimExp >= now);
-        require(buyerSaleInfo[msg.sender][_saleID].claimed == false);
-        require(buyerSaleInfo[msg.sender][_saleID].won == true);
+        require(buyerSaleInfo[msg.sender][_saleID].claimed == false); //cannot claim twice
+        require(buyerSaleInfo[msg.sender][_saleID].won == true); //is winner
          
         uint excess = sales[_saleID].price - msg.value;
 
@@ -169,8 +178,9 @@ contract Distribute {
         buyerSaleInfo[msg.sender][_saleID].claimed == true;
     }
 
-    function claimAllowancePts() {
-        if (allowanceExp < now) {
+    //called by registered buyers
+    function claimAllowancePts() isRegistered{
+        if (allowanceExp < now) { // allowance expiry has passed
             allowanceExp += allowancePeriod;
             allowanceNonce++;
         }
@@ -192,12 +202,11 @@ contract Distribute {
      * Merchant Functions
      */
 
-    // changes the address that can use merchantOnly functions
-    function setAddress(address _addr) public merchantOnly {
+    function setMerchantAddress(address _addr) public merchantOnly {
         merchant = _addr;
     }
 
-    function setWallet(address _addr) public merchantOnly {
+    function setMerchantWallet(address _addr) public merchantOnly {
         merchantWallet = _addr;
     }
 
