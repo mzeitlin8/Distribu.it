@@ -1,7 +1,6 @@
 pragma solidity ^0.4.11;
 
 // hash weight or nah
-// how does handle unclaimed tokens
 
 contract Distribute {
 
