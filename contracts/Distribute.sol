@@ -1,7 +1,6 @@
 pragma solidity ^0.4.11;
-import "oraclizeAPI_04.sol";
-import "HumanStandardToken.sol";
-
+import "./oraclizeAPI_0.4.sol";
+import "./HumanStandardToken.sol";
 
 
 
@@ -113,7 +112,7 @@ contract Distribute is usingOraclize {
 		buyers[msg.sender].registered = true;
 	}
 
-	function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price, uint _tokenName, uint _tokenID) merchantOnly {
+	function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price, string _tokenName, string _tokenID) merchantOnly {
 		sales[saleNonce].saleExp = now + _salePeriod;
 		sales[saleNonce].claimPeriod = _claimPeriod;
 		sales[saleNonce].quantity = _quantity;
@@ -147,7 +146,7 @@ contract Distribute is usingOraclize {
 			}
 
 			// give customer the number of bonus entries of the weighting points spent
-			for (int i = 0; i < _weightPts; i++) {
+			for (uint i = 0; i < _weightPts; i++) {
 				RNGInfo[_saleID][sales[_saleID].tickets] = msg.sender;
 				sales[_saleID].tickets++;
 			}
@@ -163,11 +162,11 @@ contract Distribute is usingOraclize {
 		currentSaleID = _saleID;
 
 		// tells WolframAlpha how many entries there are
-		string ticketStr = uint2str(sales[_saleID].tickets);
-		string WAquery = strConcat("RandomInteger[{0, ", ticketStr, "}]");
+		string memory ticketStr = uint2str(sales[_saleID].tickets);
+		string memory WAquery = strConcat("RandomInteger[{0, ", ticketStr, "}]");
 
 		// could be streamlined by calling "RandomInteger[{1, n}, k]" instead
-		for (int i = 0; i < quantity; i++) {
+		for (uint i = 0; i < sales[_saleID].tickets; i++) {
 			oraclize_query("WolframAlpha", WAquery);
 		}
 
@@ -182,9 +181,9 @@ contract Distribute is usingOraclize {
         require(msg.sender == oraclize_cbAddress());
 
       	// update customer's info
-        uint winnerID = parseInt(result);
+        uint256 winnerID = parseInt(result);
         address winner = RNGInfo[currentSaleID][winnerID];
-        CustomerStatus[winner][currentSaleID].won = true;
+        buyerSaleInfo[winner][currentSaleID].won = true;
     }
 
 	function claimPityPts(uint _saleID) {
@@ -200,13 +199,13 @@ contract Distribute is usingOraclize {
 		require(buyerSaleInfo[msg.sender][_saleID].claimed == false);
 		require(buyerSaleInfo[msg.sender][_saleID].won == true);
 
-		uint price = sales[_saleInfo].price;
+		uint price = sales[_saleID].price;
 
 		// let buyer pay with store credit if they have any
 		if (buyers[msg.sender].credit > 0) {
 			// less store credit than cost
 			if (buyers[msg.sender].credit <= price) {
-				price -= buyer[msg.sender].credit;
+				price -= buyers[msg.sender].credit;
 				buyers[msg.sender].credit = 0;
 			}
 			// more store credit than cost
@@ -224,7 +223,7 @@ contract Distribute is usingOraclize {
         }
 
         // forward received ether minus any excess to the wallet
-        merchantWallet.transfer(quantity);
+        merchantWallet.transfer(sales[_saleID].quantity);
 
 		// give product token
 		HumanStandardToken tok = sales[_saleID].token;
@@ -250,7 +249,7 @@ contract Distribute is usingOraclize {
 		}
 
 		// check if allowance has been claimed for this period
-		require(allowanceNonce > buyers[msg.sender].pityNonce);
+		require(allowanceNonce > buyers[msg.sender].ptsNonce);
 		buyers[msg.sender].ptsNonce = allowanceNonce;
 		buyers[msg.sender].pts = allowancePts;
 	}
