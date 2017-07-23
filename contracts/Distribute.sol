@@ -1,99 +1,97 @@
 pragma solidity ^0.4.11;
+import "github.com/oraclize/ethereum-api/oraclizeAPI.sol";
 
-// hash weight or nah
 
-contract Distribute {
 
-    mapping(address => Buyer) public buyers;
-    mapping(uint => Sale) public sales; //saleNonce => sale struct
-    // [buyer's address][saleID] => CustomerStatus struct
-    mapping(address => mapping(uint => BuyerStatus)) public buyerSaleInfo;
 
-    // variables set and changeable by merchant
-    address public merchantWallet;
-    address public merchant;
-    uint public storeCredit;      // wei
-    uint public registrationFee;  // wei
-    uint public pitySum;
-    uint public allowancePts;
-    uint public allowancePeriod;
+contract Distribute is usingOraclize {
 
-    // variables to manage allowance system
-    uint public allowanceNonce;
-    uint public allowanceExp;
+	mapping(address => Customer) public buyers;
+	mapping(uint => Sale) public sales;
+	// holds buyer information for a single sale  
+	// usage: [buyer's address][saleID] => CustomerStatus struct
+	mapping(address => mapping(uint => CustomerStatus)) public buyerSaleInfo;
 
-    // nonce to differentiate each sale
-    uint public saleNonce;
+	// variables set and changeable by merchant
+	address public merchantWallet; // wallet where merchant recieves ether and tokens
+	address public merchant;       // merchant's address that calls functions
+	uint public storeCredit;       // in wei
+	uint public registrationFee;   // in wei
+	uint public pitySum;
+	uint public allowancePts;
+	uint public allowancePeriod;
 
-    struct Buyer {
-        uint credit;     // wei
+	// variables to manage allowance system
+	uint public allowanceNonce;
+	uint public allowanceExp;
 
-        uint pts;
-        uint ptsNonce;
+	// nonce to differentiate each sale
+	uint public saleNonce;
 
-        uint pityPts;
+	struct Customer {
+		uint credit;     // in wei
+		uint pts;
+		uint ptsNonce;
+		uint pityPts;
+		bool registered;
+	}
 
-        bool registered;
-    }
+	struct CustomerStatus {
+		uint weightPts;  // how much buyer bet to raise chances of winning (default 0)
+		bool won;        // whether was able to buy product or not
+		bool claimed;    // if won: product claimed    if lost: pity points claimed
+	}
 
-    struct BuyerStatus {
-        uint weightPts;  // how much buyer bet to raise chances of winning (default 0)
-        bool won;        // whether was able to buy product or not
-        bool claimed;    // if won: product claimed    if lost: pity points claimed
-    }
+	struct Sale {
+		uint saleExp;    // sale end time
+		uint claimExp;   // claiming period end time
+		uint price;      // in wei
+		uint quantity;   // also serves as a counter for how many tokens of the product have been claimed
 
-    struct Sale {
-        uint saleExp;   // for buyers to make enter a sale
-        uint claimExp;  // for a winner to claim a product token
-        uint price;     // wei
-        uint quantity;  // num goods
+		// instance of the token that represents the product
+		HumanStandardToken token;  
+	}
 
-        address tokenAddr;  // IMPLEMENT
-    }
+	/*
+	 * Modifiers
+	 */
 
-    /*
-     * Modifiers
-     */
-    modifier merchantOnly {
+	modifier merchantOnly {
         require(msg.sender == merchant);
         _;
     }
-    modifier isRegistered {
-        require(buyers[msg.sender].registered);
-        _;
-    }
 
-    /*
-     * Constructor
-     */
 
-    function Distribute(address _merchantWallet, 
-        uint _storeCredit, 
-        uint _registrationFee, 
-        uint _pitySum, 
-        uint _allowancePts, 
-        uint _allowancePeriod) {
-        // set merchant variables
-        merchantWallet = _merchantWallet;
-        storeCredit = _storeCredit;
-        registrationFee = _registrationFee;
-        pitySum = _pitySum;
-        allowancePts = _allowancePts;
-        allowancePeriod = _allowancePeriod;
-        merchant = msg.sender;
+	/*
+	 * Constructor
+	 */
 
-        allowanceNonce = 0;
-        allowanceExp = now + _allowancePeriod;
+	function Distribute(address _merchantWallet, 
+		uint _storeCredit, 
+		uint _registrationFee, 
+		uint _pitySum, 
+		uint _allowancePts, 
+		uint _allowancePeriod) {
+		// set merchant variables
+		merchantWallet = _merchantWallet;
+		storeCredit = _storeCredit;
+		registrationFee = _registrationFee;
+		pitySum = _pitySum;
+		allowancePts = _allowancePts;
+		allowancePeriod = _allowancePeriod;
+		merchant = msg.sender;
 
-        // start saleID nonce at 0
-        saleNonce = 0;
-    }
+		allowanceNonce = 0;
+		allowanceExp = now + _allowancePeriod;
 
-    // called by customer who wishes to register as a buyer
-    function register() payable {
-        uint payment = storeCredit + registrationFee;
-        require(payment <= msg.value);
+		// start saleID nonce at 0
+		saleNonce = 0;
+	}
+
+	function register() payable {
+		uint payment = storeCredit + registrationFee;
         uint excess = payment - msg.value;
+
         // return any excess msg.value
         if (excess > 0) {
             msg.sender.transfer(excess);
@@ -102,68 +100,83 @@ contract Distribute {
         // forward received ether minus any excess to the wallet
         merchantWallet.transfer(payment);
 
-        buyers[msg.sender].credit = storeCredit;
-        buyers[msg.sender].registered = true;
-    }
+		buyers[msg.sender].credit = storeCredit;
+		buyers[msg.sender].registered = true;
+	}
 
-    //initialize values in Sale struct and increment sale nonce
-    function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price) merchantOnly {
-        sales[saleNonce].saleExp = now + _salePeriod;
-        sales[saleNonce].claimExp = sales[saleNonce].saleExp + _claimPeriod;
-        sales[saleNonce].quantity = _quantity;
-        sales[saleNonce].price = _price;
-        saleNonce++;
+	function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price, uint _tokenName, uint _tokenID) merchantOnly {
+		sales[saleNonce].saleExp = now + _salePeriod;
+		sales[saleNonce].claimExp = sales[saleNonce].saleExp + _claimPeriod;
+		sales[saleNonce].quantity = _quantity;
+		sales[saleNonce].price = _price;
+		saleNonce++;
 
-        // event
-    }
+		// create a token for the product
+		sales[saleNonce].token = new HumanStandardToken(_quantity, _tokenName, 0, _tokenID);
 
-    // called by registered buyer
-    // subtract points from the buyer and record points in the sale
-    function enterSale(uint _weightPts, uint _saleID) public isRegistered{
-        require(!saleEnded(_saleID));
-        require(buyers[msg.sender].pts + buyers[msg.sender].pityPts >= _weightPts);
+		// event
+	}
 
-        if (_weightPts > 0) {
-            if (buyers[msg.sender].pts >= _weightPts) { // only take from regular pts
-                buyers[msg.sender].pts = buyers[msg.sender].pts - _weightPts;
-            }
-            else { //take all of regular pts and part of pityPts
-                uint difference = _weightPts - buyers[msg.sender].pts;
-                buyers[msg.sender].pts = 0;
-                buyers[msg.sender].pityPts = buyers[msg.sender].pityPts - difference;
-            }
-        }
-        // record how many points the buyer wants to put into the sale
-        buyerSaleInfo[msg.sender][_saleID].weightPts = _weightPts;
-    }
+	function enterSale(uint _weightPts, uint _saleID) {
+		//
+		require(buyers[msg.sender].registered == true);
+		require(buyers[msg.sender].pts + buyers[msg.sender].pityPts >= _weightPts);
+		require(sales[_saleID].saleExp > now);
 
-    // intended to be called by merchant, but it is fine if anyone does
-    function decideWinners(uint _saleID) {
-        require(saleEnded(_saleID));
-        // require( hasn't been decided yet )
-        // call an oracle
-        // event
-        // set whether buyers won or lost in struct
-    }
+		if (_weightPts > 0) {
+			if (buyers[msg.sender].pts >= _weightPts) {
+				buyers[msg.sender].pts = buyers[msg.sender].pts - _weightPts;
+			}
+			else
+			{
+				uint difference = _weightPts - buyers[msg.sender].pts;
+				buyers[msg.sender].pts = 0;
+				buyers[msg.sender].pityPts = buyers[msg.sender].pityPts - difference;
+			}
+		}
 
-    // called by losers of the sale
-    // increase number of pity points
-    function claimPityPts(uint _saleID) public isRegistered {
-        require(buyerSaleInfo[msg.sender][_saleID].claimed == false); //cannot claim twice
-        require(buyerSaleInfo[msg.sender][_saleID].won == false); //is loser
+		buyerSaleInfo[msg.sender][_saleID].weightPts = _weightPts;
+	}
 
-        buyers[msg.sender].pityPts += pitySum;
-        buyerSaleInfo[msg.sender][_saleID].claimed = true;
-    }
+	// intended to be called by merchant, but it is fine if anyone does
+	function decideWinners(uint _saleID) {
+		require(sales[_saleID].saleExp < now);
+		require( hasn't been decided yet )
+		// call an oracle
+		// event
+		// set whether buyers won or lost in struct
+	}
 
-    // called by winners of the sale, send ETH with txn to pay for product
-    // get token from merchant
-    function claimProduct(uint _saleID) public isRegistered payable {
-        require(sales[_saleID].claimExp >= now);
-        require(buyerSaleInfo[msg.sender][_saleID].claimed == false); //cannot claim twice
-        require(buyerSaleInfo[msg.sender][_saleID].won == true); //is winner
-         
-        uint excess = sales[_saleID].price - msg.value;
+	function claimPityPts(uint _saleID) {
+		require(buyerSaleInfo[msg.sender][_saleID].claimed == false);
+		require(buyerSaleInfo[msg.sender][_saleID].won == false);
+
+		buyers[msg.sender].pityPts += pitySum;
+		buyerSaleInfo[msg.sender][_saleID].claimed = true;
+	}
+
+	function claimProduct(uint _saleID) payable {
+		require(sales[_saleID].claimExp >= now);
+		require(buyerSaleInfo[msg.sender][_saleID].claimed == false);
+		require(buyerSaleInfo[msg.sender][_saleID].won == true);
+
+		uint price = sales[_saleInfo].price;
+
+		// let buyer pay with store credit if they have any
+		if (buyer[msg.sender].credit > 0) {
+			// less store credit than cost
+			if (buyer[msg.sender].credit <= price) {
+				price -= buyer[msg.sender].credit;
+				buyer[msg.sender].credit = 0;
+			}
+			// more store credit than cost
+			else {
+				buyer[msg.sender].credit -= price;
+				price = 0;
+			}
+		}
+		 
+		uint excess = price - msg.value;
 
         // return any excess msg.value
         if (excess > 0) {
@@ -171,63 +184,71 @@ contract Distribute {
         }
 
         // forward received ether minus any excess to the wallet
-        merchantWallet.transfer(sales[_saleID].price);
+        merchantWallet.transfer(payment);
 
-        // GIVE TOKEN, IMPLEMENT
+		// give product token
+		HumanStandardToken tok = sales[_saleID].token;
+		require(tok.transfer(msg.sender, 1));
+		sales[_saleID].quantity--;
 
-        buyerSaleInfo[msg.sender][_saleID].claimed == true;
-    }
+		buyerSaleInfo[msg.sender][_saleID].claimed == true;
+	}
 
-    //called by registered buyers
-    function claimAllowancePts() isRegistered{
-        if (allowanceExp < now) { // allowance expiry has passed
-            allowanceExp += allowancePeriod;
-            allowanceNonce++;
-        }
+	// allows merchant to claim any unclaimed product tokens
+	function claimExtraTokens(uint _saleID) {
+		require(sales[_saleID].claimExp < now);
+		HumanStandardToken tok = sales[_saleID].token;
+		require(tok.transfer(merchantWallet, sales[_saleID].quantity));
+		sales[_saleID].quantity = 0;
+	}
 
-        require(allowanceNonce > buyers[msg.sender].ptsNonce);
-        buyers[msg.sender].ptsNonce = allowanceNonce;
-        buyers[msg.sender].pts = allowancePts;
-    }
+	function claimAllowancePts() {
+		// increment to next allowance period if current has ended
+		if (allowanceExp < now) {
+			allowanceExp += allowancePeriod;
+			allowanceNonce++;
+		}
+
+		// check if allowance has been claimed for this period
+		require(allowanceNonce > buyers[msg.sender].pityNonce);
+		buyers[msg.sender].ptsNonce = allowanceNonce;
+		buyers[msg.sender].pts = allowancePts;
+	}
 
 
-    /*
-     * Helper Functions
-     */
-     function saleEnded(uint saleID) private returns(bool) {
-        return sales[saleID].saleExp < now;
-     }
 
-    /*
-     * Merchant Functions
-     */
+	/*
+	 * Merchant Functions
+	 */
 
-    function setMerchantAddress(address _addr) public merchantOnly {
-        merchant = _addr;
-    }
+	// changes the address that can use merchantOnly functions
+	function setAddress(address _addr) public merchantOnly {
+		merchant = _addr;
+	}
 
-    function setMerchantWallet(address _addr) public merchantOnly {
-        merchantWallet = _addr;
-    }
+	function setWallet(address _addr) public merchantOnly {
+		merchantWallet = _addr;
+	}
 
-    function setStoreCredit(uint _credit) public merchantOnly {
-        storeCredit = _credit;
-    }
+	function setStoreCredit(uint _credit) public merchantOnly {
+		storeCredit = _credit;
+	}
 
-    function setRegistrationFee(uint _fee) public merchantOnly{
-        registrationFee = _fee;
-    }
-    
-    function setPitySum(uint _sum) public merchantOnly{
-        pitySum = _sum;
-    }
+	function setRegistrationFee(uint _fee) public merchantOnly{
+		registrationFee = _fee;
+	}
+	
+	function setPitySum(uint _sum) public merchantOnly{
+		pitySum = _sum;
+	}
 
-    function setAllowancePts(uint _pts) public merchantOnly{
-        registrationFee = _pts;
-    }
-    
-    function setAllowancePeriod(uint _period) public merchantOnly{
-        pitySum = _period;
-    }
+	function setAllowancePts(uint _pts) public merchantOnly{
+		registrationFee = _pts;
+	}
+	
+	function setAllowancePeriod(uint _period) public merchantOnly{
+		pitySum = _period;
+	}
+
 
 }
