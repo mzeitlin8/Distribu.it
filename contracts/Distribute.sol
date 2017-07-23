@@ -12,6 +12,9 @@ contract Distribute is usingOraclize {
 	// holds buyer information for a single sale  
 	// usage: [buyer's address][saleID] => CustomerStatus struct
 	mapping(address => mapping(uint => CustomerStatus)) public buyerSaleInfo;
+	// holds the addresses to each uint the RNG might choose when winners are determined
+	// usage: [saleID][number in the RNG] => customer's address
+	mapping(uint => mapping(uint => address)) public RNGInfo;
 
 	// variables set and changeable by merchant
 	address public merchantWallet; // wallet where merchant recieves ether and tokens
@@ -26,11 +29,15 @@ contract Distribute is usingOraclize {
 	uint public allowanceNonce;
 	uint public allowanceExp;
 
-	// nonce to differentiate each sale
+	// nonce to differentiate each sale upon start
 	uint public saleNonce;
 
+	// saleID to be referenced by the oracle during its calculation of winners using RNG
+	// it will only be used during each run of decideWinners
+	uint public currentSaleID;
+
 	struct Customer {
-		uint credit;     // in wei
+		uint credit;     	// in wei
 		uint pts;
 		uint ptsNonce;
 		uint pityPts;
@@ -38,17 +45,17 @@ contract Distribute is usingOraclize {
 	}
 
 	struct CustomerStatus {
-		uint weightPts;  // how much buyer bet to raise chances of winning (default 0)
-		bool won;        // whether was able to buy product or not
-		bool claimed;    // if won: product claimed    if lost: pity points claimed
+		bool won;        	// whether was able to buy product or not
+		bool claimed;    	// if won: product claimed    if lost: pity points claimed
 	}
 
 	struct Sale {
-		uint saleExp;    // sale end time
-		uint claimExp;   // claiming period end time
-		uint price;      // in wei
-		uint quantity;   // also serves as a counter for how many tokens of the product have been claimed
-		uint tickets;    // number of entries into the lottery
+		uint saleExp;    	// sale end time
+		uint claimPeriod;	// time for buyers to claim, starts after winners are decided
+		uint claimExp;   	// claiming period end time
+		uint price;      	// in wei
+		uint quantity;   	// also serves as a counter for how many tokens of the product have been claimed
+		uint tickets;    	// number of entries into the lottery
 
 		// instance of the token that represents the product
 		HumanStandardToken token;  
@@ -108,7 +115,7 @@ contract Distribute is usingOraclize {
 
 	function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price, uint _tokenName, uint _tokenID) merchantOnly {
 		sales[saleNonce].saleExp = now + _salePeriod;
-		sales[saleNonce].claimExp = sales[saleNonce].saleExp + _claimPeriod;
+		sales[saleNonce].claimPeriod = _claimPeriod;
 		sales[saleNonce].quantity = _quantity;
 		sales[saleNonce].price = _price;
 		saleNonce++;
@@ -120,11 +127,12 @@ contract Distribute is usingOraclize {
 	}
 
 	function enterSale(uint _weightPts, uint _saleID) {
-		//
 		require(buyers[msg.sender].registered == true);
 		require(buyers[msg.sender].pts + buyers[msg.sender].pityPts >= _weightPts);
 		require(sales[_saleID].saleExp > now);
 
+		// give customer one entry
+		RNGInfo[_saleID][sales[_saleID].tickets] = msg.sender;
 		sales[_saleID].tickets++;
 
 		if (_weightPts > 0) {
@@ -137,27 +145,46 @@ contract Distribute is usingOraclize {
 				buyers[msg.sender].pts = 0;
 				buyers[msg.sender].pityPts = buyers[msg.sender].pityPts - difference;
 			}
-			sales[_saleID].tickets+= _weightPts;
-		}
 
-		buyerSaleInfo[msg.sender][_saleID].weightPts = _weightPts;
+			// give customer the number of bonus entries of the weighting points spent
+			for (int i = 0; i < _weightPts; i++) {
+				RNGInfo[_saleID][sales[_saleID].tickets] = msg.sender;
+				sales[_saleID].tickets++;
+			}
+		}
 	}
 
 	// intended to be called by merchant, but it is fine if anyone does
 	function decideWinners(uint _saleID) {
 		require(sales[_saleID].saleExp < now);
-		// require( hasn't been decided yet )
+		require(sales[_saleID].claimExp == 0);
 
-		oraclize_query("WolframAlpha", "RandomInteger[{1, 100}, 5]");
+		// notes which sale we are deciding winners for so the callback function knows
+		currentSaleID = _saleID;
+
+		// tells WolframAlpha how many entries there are
+		string ticketStr = uint2str(sales[_saleID].tickets);
+		string WAquery = strConcat("RandomInteger[{0, ", ticketStr, "}]");
+
+		// could be streamlined by calling "RandomInteger[{1, n}, k]" instead
+		for (int i = 0; i < quantity; i++) {
+			oraclize_query("WolframAlpha", WAquery);
+		}
+
+		// start claiming period
+		sales[_saleID].claimExp = now + sales[_saleID].claimPeriod;
 
 		// event
-
-		// set whether buyers won or lost in struct
 	}
 
 	// callback for Oraclize to return values
 	function __callback(bytes32 myid, string result) {
         require(msg.sender == oraclize_cbAddress());
+
+      	// update customer's info
+        uint winnerID = parseInt(result);
+        address winner = RNGInfo[currentSaleID][winnerID];
+        CustomerStatus[winner][currentSaleID].won = true;
     }
 
 	function claimPityPts(uint _saleID) {
@@ -176,15 +203,15 @@ contract Distribute is usingOraclize {
 		uint price = sales[_saleInfo].price;
 
 		// let buyer pay with store credit if they have any
-		if (buyer[msg.sender].credit > 0) {
+		if (buyers[msg.sender].credit > 0) {
 			// less store credit than cost
-			if (buyer[msg.sender].credit <= price) {
+			if (buyers[msg.sender].credit <= price) {
 				price -= buyer[msg.sender].credit;
-				buyer[msg.sender].credit = 0;
+				buyers[msg.sender].credit = 0;
 			}
 			// more store credit than cost
 			else {
-				buyer[msg.sender].credit -= price;
+				buyers[msg.sender].credit -= price;
 				price = 0;
 			}
 		}
@@ -197,7 +224,7 @@ contract Distribute is usingOraclize {
         }
 
         // forward received ether minus any excess to the wallet
-        merchantWallet.transfer(payment);
+        merchantWallet.transfer(quantity);
 
 		// give product token
 		HumanStandardToken tok = sales[_saleID].token;
