@@ -92,8 +92,8 @@ contract Distribute {
     // called by customer who wishes to register as a buyer
     function register() payable {
         uint payment = storeCredit + registrationFee;
+        require(payment <= msg.value);
         uint excess = payment - msg.value;
-
         // return any excess msg.value
         if (excess > 0) {
             msg.sender.transfer(excess);
