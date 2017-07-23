@@ -20,8 +20,9 @@ A description of the user process at each step and how the backend handles it.
     vote, allowing a customer to put preference to certain products over others.  The points refresh back to a set value after
     a set time period (controlled by the merchant's parameters).
 
-5.  The customer can enter sales by specifying the number of points they wish to use.
-
+5.  The customer can enter sales by specifying the number of points they wish to use.  By specifying 0 points, the
+    customer still enters the sale, but they will have a lower chance of winning than those who spent points.
+    
 6.  The merchant calls an oracle (WolframAlpha's random number generator through Oraclize) to decide the winners.
 
 7.  Winners may now buy the token that represents the product being sold.
@@ -38,7 +39,7 @@ A description of the user process at each step and how the backend handles it.
     because this product is intended for respected and trusted merchants who would want to take the hit that scamming
     customers would result in.
     
-2.  The merchant is expected to pay the gas (and oracle costs, which typically cost $0.03 USD per call to Wolfram Alpha) 
+2.  The merchant is expected to pay the gas (and oracle costs, which typically cost $0.03 USD per call to WolframAlpha) 
     needed to run the decideWinners function that randomizes the customers who recieve the right to buy the good.  To
     offset this cost and other costs of running the contract, the merchant is recieving a portion of the registration fee of 
     each customer.  Addtionally, they are saving the money that having their site DDoS'd by bots would lose.
