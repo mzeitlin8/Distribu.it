@@ -1,5 +1,6 @@
 pragma solidity ^0.4.11;
-import "github.com/oraclize/ethereum-api/oraclizeAPI.sol";
+import "oraclizeAPI_04.sol";
+import "HumanStandardToken.sol";
 
 
 
