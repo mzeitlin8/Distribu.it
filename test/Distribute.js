@@ -31,7 +31,7 @@ contract('Distribute', (accounts) =>
         let d;
         return Distribute.deployed()
         .then((distr) => d = distr)
-        .then(() => d.setMerchantWallet(accounts[1]))
+        .then(() => d.setWallet(accounts[1]))
         .then(() => d.merchantWallet.call())
         .then((result) => assert.equal(result, accounts[1], "unexpected merchant wallet address"))
     });  
@@ -40,55 +40,83 @@ contract('Distribute', (accounts) =>
     it("Should register accounts[2] while sending in exact ETH amount", () => 
     {
         let d;
-        let start_balance;
-        let end_balance;
         let sum = registrationFee + storeCredit;
-        let sum_str = new BN(sum.toString(10), 10);
 
         return Distribute.deployed()
         .then((distr) => d = distr)
-        .then(() => ethQuery.getBalance(accounts[2]))
-        .then((balance) => start_balance = balance.toString(10))
         .then(() => d.register({from: accounts[2], value: sum}))
-        .then(() => ethQuery.getBalance(accounts[2]))
-        .then((balance) => balance.add(sum_str).toString(10))
-        .then((end_balance) => assert.equal(start_balance, end_balance, "accounts[2] has the wrong balance"))
     });
 
     //Testing register()
     it("Should register accounts[3] while sending in extra ETH", () => 
     {
         let d;
-        let start_balance;
-        let end_balance;
         let extra = 40;
-        let sum = registrationFee + storeCredit;
-        let sum_str = new BN(sum.toString(10), 10);
-
+        let sum = registrationFee + storeCredit + extra;
+        
         return Distribute.deployed()
         .then((distr) => d = distr)
-        .then(() => ethQuery.getBalance(accounts[3]))
-        .then((balance) => start_balance = balance.toString(10))
-        .then(() => d.register({from: accounts[3], value: sum + extra}))
-        .then(() => ethQuery.getBalance(accounts[3]))
-        .then((balance) => balance.add(sum_str).toString(10))
-        .then(() => assert.equal(start_balance, end_balance, "accounts[3] has the wrong balance"))
+        .then(() => d.register({from: accounts[3], value: sum}))
     });
 
     //Testing register()
     it("Should not register accounts[4] while sending in too little ETH", () => 
     {
         let d;
-        let start_balance;
-        let end_balance;
 
         return Distribute.deployed()
         .then((distr) => d = distr)
-        .then(() => ethQuery.getBalance(accounts[4]))
-        .then((balance) => start_balance = balance.toString(10))
         .then(() => d.register({from: accounts[4], value: 0}))
         .catch((error) => console.log("Success: did not allow accounts[4] to register"))
     });
+
+    //Testing startSale()
+    it("Should not allow a buyer to start the sale", () => 
+    {
+        let d;
+
+        return Distribute.deployed()
+        .then((distr) => d = distr)
+        .then(() => d.startSale.call(8,8,8,8,"1","1",{from: accounts[2]}))
+        .catch((error) => console.log("Success: did not allow sale to start"))
+    });
+
+    //Testing startSale()
+    it("Should allow merchant to start the sale", () => 
+    {
+        let d;
+
+        return Distribute.deployed()
+        .then((distr) => d = distr)
+        .then(() => d.startSale.call(8,8,8,8,"1","1",{from: accounts[0]}))
+        .then((result) => assert.equal(0,result, "SaleID is wrong"))
+    });
+
+    //Testing claimAllowancePts()
+    it("Should allow accounts[2] to claim allowance", () => 
+    {
+        let d;
+
+        return Distribute.deployed()
+        .then((distr) => d = distr)
+        .then(() => d.claimAllowancePts({from: accounts[2]}))
+        .then(() => d.buyers.call(accounts[2]))
+        .then((result) => console.log(result))
+        // .then((result) => assert.equal(0,result, "SaleID is wrong"))
+    });
+
+    //Testing enterSale()
+    it("Should allow accounts[2] to claim allowance", () => 
+    {
+        let d;
+
+        return Distribute.deployed()
+        .then((distr) => d = distr)
+        .then(() => d.enterSale(10, 0, {from: accounts[2]}))
+        .then(() => d.buyers.call(accounts[2]))
+        .then((result) => assert.equal(0,result, "SaleID is wrong"))
+    });
+
 
 
 });
