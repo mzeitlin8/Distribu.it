@@ -7,11 +7,6 @@ import "HumanStandardToken.sol";
 
 contract Distribute is usingOraclize {
 
-	string test;
-	bytes32 test1;
-	uint[] test2;
-	uint test3;
-
 	mapping(address => Customer) public buyers;
 	mapping(uint => Sale) public sales;
 	// holds buyer information for a single sale  
@@ -53,6 +48,7 @@ contract Distribute is usingOraclize {
 		uint claimExp;   // claiming period end time
 		uint price;      // in wei
 		uint quantity;   // also serves as a counter for how many tokens of the product have been claimed
+		uint tickets;    // number of entries into the lottery
 
 		// instance of the token that represents the product
 		HumanStandardToken token;  
@@ -129,6 +125,8 @@ contract Distribute is usingOraclize {
 		require(buyers[msg.sender].pts + buyers[msg.sender].pityPts >= _weightPts);
 		require(sales[_saleID].saleExp > now);
 
+		sales[_saleID].tickets++;
+
 		if (_weightPts > 0) {
 			if (buyers[msg.sender].pts >= _weightPts) {
 				buyers[msg.sender].pts = buyers[msg.sender].pts - _weightPts;
@@ -139,6 +137,7 @@ contract Distribute is usingOraclize {
 				buyers[msg.sender].pts = 0;
 				buyers[msg.sender].pityPts = buyers[msg.sender].pityPts - difference;
 			}
+			sales[_saleID].tickets+= _weightPts;
 		}
 
 		buyerSaleInfo[msg.sender][_saleID].weightPts = _weightPts;
@@ -149,19 +148,16 @@ contract Distribute is usingOraclize {
 		require(sales[_saleID].saleExp < now);
 		// require( hasn't been decided yet )
 
-		oraclize_query("WolframAlpha","RandomInteger[{1, 100}, 5]");
-		// call an oracle
+		oraclize_query("WolframAlpha", "RandomInteger[{1, 100}, 5]");
+
 		// event
+
 		// set whether buyers won or lost in struct
 	}
 
 	// callback for Oraclize to return values
 	function __callback(bytes32 myid, string result) {
         require(msg.sender == oraclize_cbAddress());
-        test = result;
-        test1 = result;
-        test2 = result;
-        test3 = result;
     }
 
 	function claimPityPts(uint _saleID) {
