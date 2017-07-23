@@ -7,6 +7,11 @@ import "HumanStandardToken.sol";
 
 contract Distribute is usingOraclize {
 
+	string test;
+	bytes32 test1;
+	uint[] test2;
+	uint test3;
+
 	mapping(address => Customer) public buyers;
 	mapping(uint => Sale) public sales;
 	// holds buyer information for a single sale  
@@ -142,11 +147,22 @@ contract Distribute is usingOraclize {
 	// intended to be called by merchant, but it is fine if anyone does
 	function decideWinners(uint _saleID) {
 		require(sales[_saleID].saleExp < now);
-		require( hasn't been decided yet )
+		// require( hasn't been decided yet )
+
+		oraclize_query("WolframAlpha","RandomInteger[{1, 100}, 5]");
 		// call an oracle
 		// event
 		// set whether buyers won or lost in struct
 	}
+
+	// callback for Oraclize to return values
+	function __callback(bytes32 myid, string result) {
+        require(msg.sender == oraclize_cbAddress());
+        test = result;
+        test1 = result;
+        test2 = result;
+        test3 = result;
+    }
 
 	function claimPityPts(uint _saleID) {
 		require(buyerSaleInfo[msg.sender][_saleID].claimed == false);
