@@ -32,7 +32,7 @@ contract Distribute is usingOraclize {
 	uint public saleNonce;
 
 	// saleID to be referenced by the oracle during its calculation of winners using RNG
-	// it will only be used during each run of decideWinners
+	// it will only be used during single runs of decideWinners
 	uint public currentSaleID;
 
 	struct Customer {
@@ -112,17 +112,17 @@ contract Distribute is usingOraclize {
 		buyers[msg.sender].registered = true;
 	}
 
-	function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price, string _tokenName, string _tokenID) merchantOnly {
+	function startSale(uint _salePeriod, uint _claimPeriod, uint _quantity, uint _price, string _tokenName, string _tokenID) merchantOnly returns (uint){
 		sales[saleNonce].saleExp = now + _salePeriod;
 		sales[saleNonce].claimPeriod = _claimPeriod;
 		sales[saleNonce].quantity = _quantity;
 		sales[saleNonce].price = _price;
-		saleNonce++;
 
 		// create a token for the product
 		sales[saleNonce].token = new HumanStandardToken(_quantity, _tokenName, 0, _tokenID);
+		saleNonce++;
 
-		// event
+		return saleNonce - 1;
 	}
 
 	function enterSale(uint _weightPts, uint _saleID) {
@@ -172,8 +172,6 @@ contract Distribute is usingOraclize {
 
 		// start claiming period
 		sales[_saleID].claimExp = now + sales[_saleID].claimPeriod;
-
-		// event
 	}
 
 	// callback for Oraclize to return values
